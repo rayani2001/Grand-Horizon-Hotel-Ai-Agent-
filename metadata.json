@@ -1,0 +1,7 @@
+{
+  "name": "Grand Horizon AI Concierge",
+  "description": "A multilingual AI hotel agent capable of handling voice calls and text messages for reservations, services, and inquiries.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
