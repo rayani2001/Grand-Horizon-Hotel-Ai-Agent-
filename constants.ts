@@ -3,54 +3,47 @@ import { FunctionDeclaration, Schema, Type } from "@google/genai";
 export const HOTEL_NAME = "Grand Horizon Hotel";
 
 export const SYSTEM_INSTRUCTION = `
-You are an AI voice booking agent for a hotel reservation app (Grand Horizon Hotel).
+You are the elite AI Concierge for Grand Horizon Hotel, a world-class luxury destination.
+You are MULTILINGUAL. Always respond in the language the guest uses (English, French, Spanish, German, Chinese, Japanese, etc.).
 
 PRICING & ROOMS (Per Night):
-- Standard Room: $200
-- Deluxe Room: $350
-- Suite: $600
+- Standard Room: $200 (Comfortable, garden view)
+- Deluxe Room: $350 (Spacious, ocean view, private balcony)
+- Suite: $600 (Top floor, butler service, panoramic views)
 
-While speaking with the customer, you must:
-1. Collect booking details (Name, Dates, Guests, Room Type).
-2. Calculate the price based on the room type and number of nights.
-3. Update the visual draft using 'updateBookingDraft'.
-4. **CRITICAL:** You MUST ask for the customer's EMAIL ADDRESS before finalizing. You cannot book without an email.
+CONVERSATION PROTOCOL:
+1. Greet the guest warmly and offer assistance.
+2. Collect booking details: Name, Email, Dates, Guests, Room Type.
+3. **LIVE SYNC:** You MUST call 'updateBookingDraft' IMMEDIATELY after every piece of information is gathered. Do not wait for the end of the turn.
+4. **EMAIL REQUIREMENT:** You cannot finalize a booking without an email. Explain this as a "security and confirmation requirement."
+5. Calculate: 
+   - Subtotal = Price Per Night * Number of Nights.
+   - Tax = 10% of Subtotal.
+   - Total = Subtotal + Tax.
 
-Every confirmed detail must immediately appear on the customer’s screen.
-When calculating price:
-- Subtotal = Price Per Night * Number of Nights.
-- Tax = 10% of Subtotal.
-- Total = Subtotal + Tax.
+FINALIZATION:
+Only call 'saveReservation' when the guest explicitly says "Yes, book it" or "Confirm" AFTER you have reviewed the details and collected the email.
 
-Do not finalize the booking (using 'saveReservation') until:
-1. The customer confirms the details.
-2. You have collected their EMAIL address.
+MANAGER ESCALATION:
+If a guest is unhappy or specifically requests a manager:
+1. Identify the core issue.
+2. Call 'attemptManagerCall'.
+3. If 'busy', call 'createManagerMessage' and inform the guest it's being sent to the manager's priority pager.
 
-MANAGER ESCALATION PROTOCOL:
-If a guest asks to speak to a manager:
-1. First, politely ask for the reason/issue (if not already known).
-2. Use 'attemptManagerCall'.
-3. If 'busy', say: "The manager is currently unavailable. I am automatically forwarding your message to their priority inbox."
-4. Immediately call 'createManagerMessage'.
-
-TOOLS:
-- updateBookingDraft: Call this IMMEDIATELY whenever you get a new piece of info (Name, Email, Room, Price, etc.).
-- saveReservation: Call this ONLY after details are confirmed and EMAIL is collected.
-- attemptManagerCall: Call this when the user wants to speak to a manager directly.
-- createManagerMessage: Call this to log an issue/complaint.
-- saveServiceRequest: Call this for other hotel services.
+SERVICES:
+Handle requests for room service, late check-out, or spa bookings using 'saveServiceRequest'.
 `;
 
 const updateBookingDraftTool: FunctionDeclaration = {
   name: "updateBookingDraft",
-  description: "Update the live on-screen booking summary. Call this frequently.",
+  description: "Update the live on-screen receipt. Call this frequently as details emerge.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       guestName: { type: Type.STRING },
       email: { type: Type.STRING },
-      checkIn: { type: Type.STRING },
-      checkOut: { type: Type.STRING },
+      checkIn: { type: Type.STRING, description: "YYYY-MM-DD" },
+      checkOut: { type: Type.STRING, description: "YYYY-MM-DD" },
       roomType: { type: Type.STRING },
       guests: { type: Type.NUMBER },
       specialRequests: { type: Type.STRING },
@@ -63,14 +56,14 @@ const updateBookingDraftTool: FunctionDeclaration = {
 
 const saveReservationTool: FunctionDeclaration = {
   name: "saveReservation",
-  description: "Finalize and save a confirmed room reservation.",
+  description: "Commit the booking to the database. Only call after final guest confirmation.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       guestName: { type: Type.STRING },
-      email: { type: Type.STRING, description: "Required for confirmation email" },
-      checkIn: { type: Type.STRING, description: "YYYY-MM-DD" },
-      checkOut: { type: Type.STRING, description: "YYYY-MM-DD" },
+      email: { type: Type.STRING },
+      checkIn: { type: Type.STRING },
+      checkOut: { type: Type.STRING },
       guests: { type: Type.NUMBER },
       roomType: { type: Type.STRING },
       specialRequests: { type: Type.STRING },
@@ -81,7 +74,7 @@ const saveReservationTool: FunctionDeclaration = {
 
 const attemptManagerCallTool: FunctionDeclaration = {
   name: "attemptManagerCall",
-  description: "Attempt to connect the guest directly to a manager via phone.",
+  description: "Try to bridge a live call to the duty manager.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -94,15 +87,14 @@ const attemptManagerCallTool: FunctionDeclaration = {
 
 const saveServiceRequestTool: FunctionDeclaration = {
   name: "saveServiceRequest",
-  description: "Log a service request like room service, cleaning, or maintenance.",
+  description: "Log housekeeping or amenity requests.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       guestName: { type: Type.STRING },
-      requestType: { type: Type.STRING, description: "Room Service, Cleaning, Towels, etc." },
-      details: { type: Type.STRING, description: "Full description of items or service needed" },
+      requestType: { type: Type.STRING },
+      details: { type: Type.STRING },
       roomNumber: { type: Type.STRING },
-      notes: { type: Type.STRING },
     },
     required: ["guestName", "requestType", "details"],
   },
@@ -110,13 +102,13 @@ const saveServiceRequestTool: FunctionDeclaration = {
 
 const createManagerMessageTool: FunctionDeclaration = {
   name: "createManagerMessage",
-  description: "Escalate an issue to the manager. Triggers an automatic message to the manager.",
+  description: "Send an urgent written message to the manager's dashboard.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       guestName: { type: Type.STRING },
-      contactDetails: { type: Type.STRING, description: "Guest Phone Number or Room Number for call back" },
-      issue: { type: Type.STRING, description: "Detailed complaint or reason for call" },
+      contactDetails: { type: Type.STRING },
+      issue: { type: Type.STRING },
       urgency: { type: Type.STRING, enum: ["low", "medium", "high"] },
     },
     required: ["guestName", "issue", "urgency"],
@@ -125,6 +117,5 @@ const createManagerMessageTool: FunctionDeclaration = {
 
 export const TOOLS = [updateBookingDraftTool, saveReservationTool, saveServiceRequestTool, attemptManagerCallTool, createManagerMessageTool];
 
-// Models
-export const MODEL_CHAT = "gemini-2.5-flash";
+export const MODEL_CHAT = "gemini-3-flash-preview";
 export const MODEL_VOICE = "gemini-2.5-flash-native-audio-preview-09-2025";

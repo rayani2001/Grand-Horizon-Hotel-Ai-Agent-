@@ -18,12 +18,10 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
   const [draft, setDraft] = useState<DraftBooking | null>(null);
   const [managerCallStatus, setManagerCallStatus] = useState<ManagerCallStatus>('idle');
 
-  // Audio Context Refs
   const inputContextRef = useRef<AudioContext | null>(null);
   const outputContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   
-  // Session Refs
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
@@ -41,11 +39,11 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
     sourcesRef.current.clear();
     
     if (inputContextRef.current) {
-      inputContextRef.current.close();
+      inputContextRef.current.close().catch(() => {});
       inputContextRef.current = null;
     }
     if (outputContextRef.current) {
-      outputContextRef.current.close();
+      outputContextRef.current.close().catch(() => {});
       outputContextRef.current = null;
     }
     setIsConnected(false);
@@ -172,7 +170,6 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
         },
         callbacks: {
           onopen: () => {
-            console.log('Session Opened');
             setIsConnected(true);
             setMicActive(true);
             if (!inputContextRef.current || !streamRef.current) return;
@@ -204,7 +201,9 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
                 source.onended = () => sourcesRef.current.delete(source);
              }
              if (msg.serverContent?.interrupted) {
-                sourcesRef.current.forEach(s => s.stop());
+                sourcesRef.current.forEach(s => {
+                  try { s.stop(); } catch(e) {}
+                });
                 sourcesRef.current.clear();
                 nextStartTimeRef.current = 0;
              }
@@ -213,20 +212,17 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
              }
           },
           onclose: () => {
-            console.log('Session Closed');
             stopAudio();
           },
           onerror: (err) => {
-            console.error(err);
-            setError("Connection error. Please try again.");
+            setError("Session ended. Reconnect to continue.");
             stopAudio();
           }
         }
       });
 
     } catch (e) {
-      console.error(e);
-      setError("Failed to access microphone or connect.");
+      setError("Microphone access is required for voice mode.");
       stopAudio();
     }
   };
@@ -235,96 +231,117 @@ const VoiceMode: React.FC<VoiceModeProps> = ({ onTicketCreated }) => {
     return () => stopAudio();
   }, [stopAudio]);
 
+  const resetAll = () => {
+    stopAudio();
+    setDraft(null);
+    setManagerCallStatus('idle');
+    setError(null);
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white relative overflow-hidden">
-      {/* Background Decorative Elements */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
-         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-gold-100 rounded-full blur-[100px]"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-navy-100 rounded-full blur-[80px]"></div>
+    <div className="flex h-full bg-white relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
+         <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-gold-100 rounded-full blur-[120px]"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-navy-100 rounded-full blur-[100px]"></div>
       </div>
 
-      <div className="relative z-10 flex h-full p-6 animate-fade-in-up gap-8 items-center justify-center">
-        
-        {/* Left Side: Voice Controls */}
-        <div className={`flex flex-col items-center justify-center space-y-8 transition-all duration-700 
-          ${(draft || managerCallStatus !== 'idle') ? 'w-1/2 items-end pr-8 border-r border-stone-100' : 'w-full max-w-sm'}`}>
-          
-          {/* Header Section */}
-          {!draft && managerCallStatus === 'idle' && (
-            <div className="text-center space-y-2">
-              <h2 className="text-3xl font-serif font-bold text-navy-900 tracking-tight">Voice Reception</h2>
-              <p className="text-stone-500 max-w-xs mx-auto text-sm">Tap the microphone to speak directly with our AI Concierge.</p>
-            </div>
-          )}
+      {/* Mode Status Bar */}
+      <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-20">
+         <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-stone-300'}`}></div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">
+               {isConnected ? 'Active Channel 01' : 'Channel Standby'}
+            </span>
+         </div>
+         {isConnected && (
+            <button 
+              onClick={resetAll}
+              className="text-stone-400 hover:text-navy-950 transition-colors p-2 rounded-full hover:bg-stone-50"
+              title="Reset Session"
+            >
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+               </svg>
+            </button>
+         )}
+      </div>
 
-          {/* Status Indicator / Main Button Wrapper */}
-          <div className="relative mb-4">
+      <div className="relative z-10 flex w-full h-full items-center justify-center p-8 gap-8 transition-all duration-700">
+        
+        {/* Voice Hub */}
+        <div className={`flex flex-col items-center justify-center space-y-10 transition-all duration-700 ease-in-out 
+          ${(draft || managerCallStatus !== 'idle') ? 'w-1/2 items-center pr-8 border-r border-stone-100' : 'w-full'}`}>
+          
+          <div className="relative">
             {isConnected && (
-              <>
-                <div className="absolute top-0 left-0 w-full h-full rounded-full bg-gold-400 opacity-20 animate-ping"></div>
-                <div className="absolute -inset-4 rounded-full border border-gold-200 opacity-40 animate-pulse"></div>
-              </>
+              <div className="absolute -inset-8 bg-gold-500/10 rounded-full blur-3xl animate-pulse"></div>
             )}
 
             <div 
               className={`rounded-full flex items-center justify-center shadow-2xl transition-all duration-700 relative overflow-hidden group
-                ${isConnected ? 'bg-gradient-to-br from-navy-900 to-navy-800 scale-105' : 'bg-white border-4 border-stone-50'}
-                ${(draft || managerCallStatus !== 'idle') ? 'w-32 h-32' : 'w-40 h-40'}`} 
+                ${isConnected ? 'bg-navy-950 ring-8 ring-gold-500/10 scale-110' : 'bg-white border-2 border-stone-100'}
+                ${(draft || managerCallStatus !== 'idle') ? 'w-36 h-36' : 'w-48 h-48'}`} 
             >
-               <span className={`transition-all duration-500 z-10 ${isConnected ? 'text-white' : 'text-stone-300 group-hover:text-gold-500'} ${(draft || managerCallStatus !== 'idle') ? 'text-4xl' : 'text-5xl'}`}>
-                 {isConnected ? '🎙️' : '📞'}
+               <span className={`transition-all duration-500 z-10 ${isConnected ? 'text-white' : 'text-stone-300 group-hover:text-gold-500'} 
+                  ${(draft || managerCallStatus !== 'idle') ? 'text-4xl' : 'text-6xl'}`}>
+                 {isConnected ? '🎙' : '📞'}
                </span>
-               {isConnected && <div className="absolute inset-0 bg-gold-500 opacity-10 blur-xl"></div>}
-            </div>
-
-            <div className={`absolute -bottom-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-lg transition-all duration-300
-              ${isConnected ? 'bg-gold-500 text-white translate-y-0' : 'bg-stone-200 text-stone-500 translate-y-2 opacity-0'}`}>
-              On Air
+               {isConnected && <div className="absolute inset-0 bg-gold-500/5 animate-pulse"></div>}
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="w-full max-w-xs space-y-4">
-             <div className={`w-full h-24 rounded-2xl overflow-hidden transition-all duration-700 relative border border-stone-100 shadow-inner bg-stone-50
-                ${isConnected ? 'opacity-100 translate-y-0' : 'opacity-50 grayscale translate-y-4'}`}>
+          <div className="w-full max-w-sm space-y-6">
+             {!isConnected && (
+               <div className="text-center space-y-2 mb-8">
+                 <h3 className="font-serif text-2xl font-bold text-navy-900 tracking-tight">Voice Reception</h3>
+                 <p className="text-stone-500 text-sm">Speak naturally to request bookings or guest services.</p>
+               </div>
+             )}
+
+             <div className={`w-full h-24 rounded-3xl overflow-hidden transition-all duration-700 relative border border-stone-100 shadow-inner bg-[#FDFCF9]
+                ${isConnected ? 'opacity-100 translate-y-0' : 'opacity-30 grayscale translate-y-4'}`}>
                 <Visualizer analyser={analyserRef.current} isActive={micActive} color="#bfa026" />
              </div>
 
              {!isConnected ? (
               <button
                 onClick={startSession}
-                className="w-full group relative bg-navy-900 text-white font-bold py-4 px-8 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-2xl hover:-translate-y-0.5 active:scale-95"
+                className="w-full group bg-navy-950 text-white font-black py-5 px-10 rounded-2xl overflow-hidden shadow-2xl transition-all hover:scale-[1.02] active:scale-95"
               >
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer"></div>
-                <div className="flex items-center justify-center gap-3">
-                   <span>Start Conversation</span>
-                   <span className="group-hover:translate-x-1 transition-transform">→</span>
+                <div className="flex items-center justify-center gap-4 text-xs uppercase tracking-[0.3em]">
+                   <span>Connect Live Agent</span>
+                   <span className="text-gold-500">→</span>
                 </div>
               </button>
             ) : (
               <button
                 onClick={stopAudio}
-                className="w-full bg-white border border-red-200 text-red-600 hover:bg-red-50 font-bold py-4 px-8 rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
+                className="w-full bg-red-50 text-red-600 font-black py-5 rounded-2xl transition-all shadow-md hover:bg-red-100 text-xs uppercase tracking-[0.3em]"
               >
-                End Call
+                Disconnect
               </button>
             )}
           </div>
           
           {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-xs border border-red-100 shadow-sm flex items-center gap-2">
-              <span>⚠️</span> {error}
+            <div className="bg-red-50 text-red-600 px-6 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-red-100 animate-fade-in-up">
+              {error}
             </div>
           )}
         </div>
 
-        {/* Right Side: Panels (Draft or Manager Call) */}
+        {/* Dynamic Display Panel */}
         {(draft || managerCallStatus !== 'idle') && (
-           <div className="w-1/2 h-full flex items-center justify-start pl-8 animate-slide-in relative">
+           <div className="w-1/2 h-full flex items-center justify-start py-8 pr-8 animate-slide-in relative">
               {managerCallStatus !== 'idle' ? (
-                <ManagerCallInterface status={managerCallStatus} />
+                <div className="w-full max-w-sm mx-auto">
+                   <ManagerCallInterface status={managerCallStatus} />
+                </div>
               ) : (
-                <LiveBookingPanel draft={draft!} />
+                <div className="w-full h-full max-w-sm mx-auto">
+                   <LiveBookingPanel draft={draft!} />
+                </div>
               )}
            </div>
         )}
