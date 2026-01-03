@@ -31,6 +31,16 @@ export interface ManagerMessage {
   timestamp: string;
 }
 
+export interface EmailTicket {
+  id: string;
+  email: string;
+  guestName: string;
+  subject: string;
+  body: string;
+  timestamp: string;
+  isRead: boolean;
+}
+
 export interface DraftBooking {
   bookingId?: string;
   guestName?: string;
@@ -44,12 +54,14 @@ export interface DraftBooking {
   tax?: number;
   total?: number;
   status: 'active' | 'confirmed';
+  emailStatus?: 'idle' | 'sending' | 'sent';
 }
 
 export type TicketType = 
   | { type: 'RESERVATION', data: ReservationSummary }
   | { type: 'SERVICE', data: ServiceRequest }
-  | { type: 'MANAGER', data: ManagerMessage };
+  | { type: 'MANAGER', data: ManagerMessage }
+  | { type: 'EMAIL_DISPATCH', data: EmailTicket };
 
 export interface ChatMessage {
   id: string;
